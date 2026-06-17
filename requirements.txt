@@ -11,7 +11,9 @@ pydantic==2.5.3
 pypdf==4.0.1
 
 # Machine Learning
-scikit-learn==1.4.0
+# Must match the version the model was trained/pickled with (1.6.1);
+# a mismatch silently breaks the fitted TF-IDF state ("idf vector is not fitted").
+scikit-learn==1.6.1
 pandas==2.2.0
 numpy==1.26.3
 
@@ -20,10 +22,13 @@ nltk==3.8.1
 
 # LangChain and HuggingFace
 langchain-huggingface==0.0.1
-langchain-core==0.1.23
+langchain-core==0.1.52
 
 # Environment Variables
 python-dotenv==1.0.0
 
 # Additional utilities
 starlette==0.35.1
+
+# Testing
+pytest==8.3.4

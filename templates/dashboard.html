@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% block title %}Analysis · ResumeAI{% endblock %}
+{% block head %}
+<style>
+    .dash { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1.1rem; align-items: start; }
+    .col-4 { grid-column: span 4; } .col-6 { grid-column: span 6; } .col-8 { grid-column: span 8; } .col-12 { grid-column: span 12; }
+    @media (max-width: 920px) { .dash > * { grid-column: 1 / -1 !important; } }
+
+    .doc-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+    .doc-name { display: flex; align-items: center; gap: 0.6rem; font-weight: 650; }
+    .doc-name .pill { width: 38px; height: 38px; border-radius: 11px; background: var(--grad-soft); display: grid; place-items: center; color: var(--cyan); }
+    .doc-name small { display: block; color: var(--faint); font-weight: 500; font-size: 0.75rem; }
+
+    /* Gauge */
+    .gauge-wrap { display: grid; place-items: center; position: relative; }
+    .gauge-wrap svg { transform: rotate(-90deg); }
+    .gauge-bg { fill: none; stroke: rgba(255,255,255,0.08); }
+    .gauge-fg { fill: none; stroke: url(#scoreGrad); stroke-linecap: round; transition: stroke-dashoffset 1.4s cubic-bezier(0.22,1,0.36,1); }
+    .gauge-center { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+    .gauge-num { font-size: 2.6rem; font-weight: 850; letter-spacing: -0.03em; line-height: 1; }
+    .gauge-num small { font-size: 1rem; color: var(--faint); font-weight: 700; }
+    .gauge-grade { margin-top: 0.2rem; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+    .grade-badge { display:inline-block; margin-top:0.7rem; padding:0.3rem 0.9rem; border-radius:999px; font-weight:800; font-size:0.9rem; }
+
+    /* Subscore rows */
+    .sub-row { margin-bottom: 1rem; }
+    .sub-row:last-child { margin-bottom: 0; }
+    .sub-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.4rem; font-size: 0.88rem; }
+    .sub-head .v { font-weight: 700; color: var(--muted); }
+
+    /* Confidence ring (best match) */
+    .ring-wrap { display: grid; place-items: center; position: relative; margin-bottom: 0.4rem; }
+    .ring-wrap svg { transform: rotate(-90deg); }
+    .ring-bg { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 10; }
+    .ring-fg { fill: none; stroke: url(#scoreGrad); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 1.3s cubic-bezier(0.22,1,0.36,1); }
+    .ring-center { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+    .ring-center .p { font-size: 1.5rem; font-weight: 800; }
+    .ring-center .p small { font-size: 0.85rem; color: var(--muted); }
+    .role-name { text-align: center; font-size: 1.1rem; font-weight: 800; margin-top: 0.1rem; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+
+    .match-row { margin-top: 0.7rem; }
+    .match-head { display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 0.3rem; }
+    .match-head .v { color: var(--muted); font-weight: 700; }
+
+    /* Sections checklist */
+    .check-list { display: flex; flex-direction: column; gap: 0.6rem; }
+    .check-item { display: flex; align-items: center; gap: 0.65rem; font-size: 0.92rem; font-weight: 600; }
+    .check-item .ic { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-size: 17px; flex-shrink: 0; }
+    .ic.ok { background: rgba(52,211,153,0.14); color: var(--success); }
+    .ic.no { background: rgba(251,113,133,0.12); color: var(--danger); }
+    .check-item.miss { color: var(--faint); }
+
+    /* Stat tiles */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .stat { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem; }
+    .stat .n { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em; }
+    .stat .l { font-size: 0.74rem; color: var(--muted); margin-top: 0.15rem; }
+
+    /* Skills */
+    .skill-group { margin-bottom: 1rem; }
+    .skill-group:last-child { margin-bottom: 0; }
+    .skill-group .g { font-size: 0.72rem; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.5rem; }
+    .skill-chips { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+
+    /* Suggestions */
+    .tips { display: flex; flex-direction: column; gap: 0.7rem; }
+    .tip { display: flex; gap: 0.65rem; font-size: 0.9rem; line-height: 1.45; color: var(--text); }
+    .tip .ic { color: var(--warning); flex-shrink: 0; font-size: 18px; margin-top: 1px; }
+
+    /* JD matcher */
+    .jd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; }
+    @media (max-width: 760px) { .jd-grid { grid-template-columns: 1fr; } .stat-grid { grid-template-columns: 1fr 1fr; } }
+    .jd-result { display: none; }
+    .jd-result.show { display: block; animation: pop 0.4s ease both; }
+    .jd-score { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+    .jd-score .big { font-size: 2.4rem; font-weight: 850; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .kw-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin: 0.8rem 0 0.5rem; }
+    .chip.ok { background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.3); color: #6ee7b7; }
+    .chip.no { background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.28); color: #fcd34d; }
+    .jd-empty { color: var(--faint); font-size: 0.9rem; display: grid; place-items: center; height: 100%; text-align: center; }
+</style>
+{% endblock %}
+
+{% block body %}
+{% set ov = report.score.overall %}
+{% set grade = 'A' if ov>=85 else ('B' if ov>=70 else ('C' if ov>=55 else ('D' if ov>=40 else 'E'))) %}
+{% set gradecolor = '#34d399' if ov>=70 else ('#fbbf24' if ov>=45 else '#fb7185') %}
+<svg width="0" height="0" style="position:absolute"><defs>
+    <linearGradient id="scoreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#6366f1" /><stop offset="55%" stop-color="#22d3ee" /><stop offset="100%" stop-color="#d946ef" />
+    </linearGradient>
+</defs></svg>
+
+<div class="shell">
+    <div class="topbar">
+        <a href="/home" class="brand">
+            <div class="brand-icon"><i class="ti ti-file-text" style="font-size:24px"></i></div>
+            <div class="brand-name">Resume<span>AI</span></div>
+        </a>
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+            <div class="user-chip"><span class="name">{{ username }}</span><div class="avatar">{{ username[0]|upper }}</div></div>
+            <a href="/logout" class="btn btn-danger btn-sm"><i class="ti ti-logout"></i> Sign out</a>
+        </div>
+    </div>
+
+    <div class="doc-bar rise">
+        <div class="doc-name">
+            <div class="pill"><i class="ti ti-file-cv" style="font-size:20px"></i></div>
+            <div>{{ filename }}<small>Analysis complete</small></div>
+        </div>
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+            <a href="/editor" class="btn btn-primary btn-sm"><i class="ti ti-edit"></i> Open editor &amp; AI chat</a>
+            <a href="{{ pdf_url }}" target="_blank" class="btn btn-ghost btn-sm"><i class="ti ti-download"></i> Download PDF</a>
+            <a href="/home" class="btn btn-ghost btn-sm"><i class="ti ti-upload"></i> New upload</a>
+        </div>
+    </div>
+
+    <div class="dash">
+        <!-- Overall score gauge -->
+        <div class="card col-4 rise" style="text-align:center;">
+            <div class="card-title" style="justify-content:center;"><i class="ti ti-gauge"></i> Resume score</div>
+            <div class="gauge-wrap">
+                <svg width="180" height="180" viewBox="0 0 180 180">
+                    <circle class="gauge-bg" cx="90" cy="90" r="76" stroke-width="14"></circle>
+                    <circle class="gauge-fg" id="scoreGauge" cx="90" cy="90" r="76" stroke-width="14" data-val="{{ ov }}"></circle>
+                </svg>
+                <div class="gauge-center">
+                    <div class="gauge-num"><span id="scoreNum">0</span><small>/100</small></div>
+                    <div class="gauge-grade">overall</div>
+                </div>
+            </div>
+            <div class="grade-badge" style="background:{{ gradecolor }}1f; color:{{ gradecolor }};">Grade {{ grade }}</div>
+        </div>
+
+        <!-- Score breakdown -->
+        <div class="card col-8 rise">
+            <div class="card-title"><i class="ti ti-chart-bar"></i> Score breakdown</div>
+            {% set subs = [('Impact', report.score.subscores.impact, 'Action verbs &amp; quantified results'),
+                           ('Completeness', report.score.subscores.completeness, 'Standard sections present'),
+                           ('Brevity', report.score.subscores.brevity, 'Length vs. ideal range'),
+                           ('Clarity', report.score.subscores.clarity, 'Readability'),
+                           ('Keyword strength', report.score.subscores.keywords, 'Recognized skills &amp; tools')] %}
+            {% for name, val, desc in subs %}
+            <div class="sub-row">
+                <div class="sub-head"><span>{{ name }} <span style="color:var(--faint);font-weight:500;">· {{ desc|safe }}</span></span><span class="v">{{ val }}</span></div>
+                <div class="meter"><span class="meter-fill" data-pct="{{ val }}"></span></div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Best match prediction -->
+        <div class="card col-4 rise">
+            <div class="card-title"><i class="ti ti-briefcase"></i> Best role match</div>
+            {% if confidence is not none %}
+            <div class="ring-wrap">
+                <svg width="130" height="130" viewBox="0 0 130 130">
+                    <circle class="ring-bg" cx="65" cy="65" r="56"></circle>
+                    <circle class="ring-fg" id="confRing" cx="65" cy="65" r="56" data-val="{{ confidence }}"></circle>
+                </svg>
+                <div class="ring-center"><div class="p"><span id="confNum">0</span><small>%</small></div></div>
+            </div>
+            {% endif %}
+            <div class="role-name">{{ prediction }}</div>
+            {% if top_roles and top_roles|length > 1 %}
+            <div style="margin-top:0.8rem;">
+                {% for r in top_roles %}
+                <div class="match-row">
+                    <div class="match-head"><span>{{ r.role }}</span>{% if r.prob is not none %}<span class="v">{{ r.prob }}%</span>{% endif %}</div>
+                    <div class="meter"><span class="meter-fill" data-pct="{{ r.prob if r.prob is not none else 0 }}"></span></div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Sections -->
+        <div class="card col-4 rise">
+            <div class="card-title"><i class="ti ti-list-check"></i> Sections detected</div>
+            <div class="check-list">
+                {% for key, present in report.sections.items() %}
+                <div class="check-item {{ '' if present else 'miss' }}">
+                    <div class="ic {{ 'ok' if present else 'no' }}"><i class="ti {{ 'ti-check' if present else 'ti-x' }}"></i></div>
+                    <span style="text-transform:capitalize">{{ key }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="card col-4 rise">
+            <div class="card-title"><i class="ti ti-clipboard-data"></i> Resume stats</div>
+            <div class="stat-grid">
+                <div class="stat"><div class="n">{{ report.stats.word_count }}</div><div class="l">Words</div></div>
+                <div class="stat"><div class="n">{{ report.stats.reading_time_min }}m</div><div class="l">Read time</div></div>
+                <div class="stat"><div class="n">{{ report.stats.bullet_count }}</div><div class="l">Bullet points</div></div>
+                <div class="stat"><div class="n">{{ report.stats.quantified_count }}</div><div class="l">Quantified</div></div>
+                <div class="stat"><div class="n">{{ report.stats.action_verb_count }}</div><div class="l">Action verbs</div></div>
+                <div class="stat"><div class="n">{{ report.readability|round|int }}</div><div class="l">Readability</div></div>
+            </div>
+        </div>
+
+        <!-- Skills -->
+        <div class="card col-6 rise">
+            <div class="card-title"><i class="ti ti-tags"></i> Skills detected</div>
+            {% if report.skills %}
+            {% for group, items in report.skills.items() %}
+            <div class="skill-group">
+                <div class="g">{{ group }}</div>
+                <div class="skill-chips">
+                    {% for s in items %}<span class="chip accent">{{ s }}</span>{% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p style="color:var(--faint);font-size:0.9rem;">No recognized skills found — add a Skills section listing your tools and technologies.</p>
+            {% endif %}
+        </div>
+
+        <!-- Suggestions -->
+        <div class="card col-6 rise">
+            <div class="card-title"><i class="ti ti-bulb"></i> Smart suggestions</div>
+            <div class="tips">
+                {% for tip in report.suggestions %}
+                <div class="tip"><i class="ti ti-arrow-badge-right ic"></i><span>{{ tip }}</span></div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- JD matcher -->
+        <div class="card col-12 rise">
+            <div class="card-title"><i class="ti ti-target-arrow"></i> Job-description matcher</div>
+            <div class="jd-grid">
+                <div>
+                    <p style="color:var(--muted);font-size:0.88rem;margin-bottom:0.7rem;">Paste a job posting to see how well your resume matches — and which keywords you're missing.</p>
+                    <textarea id="jdText" class="form-input" rows="7" placeholder="Paste the job description here…"></textarea>
+                    <button class="btn btn-primary" id="jdBtn" style="margin-top:0.8rem;"><i class="ti ti-wand"></i> Analyze match</button>
+                </div>
+                <div>
+                    <div class="jd-empty" id="jdEmpty"><span><i class="ti ti-arrow-left" style="font-size:22px;display:block;margin-bottom:0.4rem;"></i>Your match results will appear here</span></div>
+                    <div class="jd-result" id="jdResult">
+                        <div class="jd-score">
+                            <div class="big"><span id="jdScoreNum">0</span>%</div>
+                            <div style="flex:1;"><div class="meter"><span class="meter-fill" id="jdMeter"></span></div><div style="color:var(--muted);font-size:0.8rem;margin-top:0.4rem;">keyword & content match</div></div>
+                        </div>
+                        <div class="kw-label" style="color:var(--success);">Matched keywords</div>
+                        <div class="skill-chips" id="jdMatched"></div>
+                        <div class="kw-label" style="color:var(--warning);">Missing keywords</div>
+                        <div class="skill-chips" id="jdMissing"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function animateRing(el, numEl, circ) {
+        const val = Math.max(0, Math.min(100, parseFloat(el.dataset.val) || 0));
+        el.style.strokeDasharray = circ;
+        el.style.strokeDashoffset = circ;
+        requestAnimationFrame(() => requestAnimationFrame(() => { el.style.strokeDashoffset = circ * (1 - val / 100); }));
+        if (numEl) countUp(numEl, val);
+    }
+    function countUp(el, target) {
+        const start = performance.now(), dur = 1300;
+        const dec = target % 1 === 0 ? 0 : 1;
+        function tick(now) {
+            const t = Math.min(1, (now - start) / dur), e = 1 - Math.pow(1 - t, 3);
+            el.textContent = (target * e).toFixed(dec);
+            if (t < 1) requestAnimationFrame(tick); else el.textContent = target.toFixed(dec);
+        }
+        requestAnimationFrame(tick);
+    }
+    window.addEventListener('load', function () {
+        const g = document.getElementById('scoreGauge');
+        if (g) animateRing(g, document.getElementById('scoreNum'), 2 * Math.PI * 76);
+        const c = document.getElementById('confRing');
+        if (c) animateRing(c, document.getElementById('confNum'), 2 * Math.PI * 56);
+        document.querySelectorAll('.meter-fill').forEach(function (el) {
+            const pct = Math.max(2, Math.min(100, parseFloat(el.dataset.pct) || 0));
+            requestAnimationFrame(() => requestAnimationFrame(() => { el.style.width = pct + '%'; }));
+        });
+    });
+
+    const jdBtn = document.getElementById('jdBtn');
+    jdBtn.addEventListener('click', async function () {
+        const jd = document.getElementById('jdText').value.trim();
+        if (!jd) { document.getElementById('jdText').focus(); return; }
+        jdBtn.disabled = true; jdBtn.innerHTML = '<i class="ti ti-loader-2"></i> Analyzing…';
+        try {
+            const r = await fetch('/match-jd', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jd_text: jd }) });
+            const d = await r.json();
+            document.getElementById('jdEmpty').style.display = 'none';
+            const res = document.getElementById('jdResult'); res.classList.add('show');
+            document.getElementById('jdMeter').style.width = '0%';
+            countUp(document.getElementById('jdScoreNum'), d.score || 0);
+            requestAnimationFrame(() => requestAnimationFrame(() => { document.getElementById('jdMeter').style.width = (d.score || 0) + '%'; }));
+            const matched = document.getElementById('jdMatched'), missing = document.getElementById('jdMissing');
+            matched.innerHTML = (d.matched && d.matched.length) ? d.matched.map(k => '<span class="chip ok">' + k + '</span>').join('') : '<span style="color:var(--faint);font-size:0.85rem;">None found</span>';
+            missing.innerHTML = (d.missing && d.missing.length) ? d.missing.map(k => '<span class="chip no">' + k + '</span>').join('') : '<span style="color:var(--faint);font-size:0.85rem;">None — great coverage!</span>';
+        } catch (e) {
+            alert('Match failed. Please try again.');
+        } finally {
+            jdBtn.disabled = false; jdBtn.innerHTML = '<i class="ti ti-wand"></i> Analyze match';
+        }
+    });
+</script>
+{% endblock %}

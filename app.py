@@ -26,27 +26,31 @@ except AttributeError:
 else:
     ssl._create_default_https_context = _create_unverified_https_context
 
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download("punkt")
+def ensure_nltk_resource(resource_path: str, package_name: str, fallback_paths: Optional[List[Path]] = None):
+    if fallback_paths and any(path.exists() for path in fallback_paths):
+        return
 
-try:
-    nltk.data.find('tokenizers/punkt_tab')
-except LookupError:
-    nltk.download("punkt_tab")
+    try:
+        nltk.data.find(resource_path)
+    except (LookupError, OSError):
+        nltk.download(package_name)
 
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download("stopwords")
 
-try:
-    nltk.data.find('corpora/wordnet')
-except LookupError:
-    nltk.download("wordnet")
+ensure_nltk_resource('tokenizers/punkt', "punkt")
+ensure_nltk_resource(
+    'tokenizers/punkt_tab',
+    "punkt_tab",
+    [Path.home() / "nltk_data" / "tokenizers" / "punkt_tab"],
+)
+ensure_nltk_resource('corpora/stopwords', "stopwords")
+ensure_nltk_resource(
+    'corpora/wordnet',
+    "wordnet",
+    [Path.home() / "nltk_data" / "corpora" / "wordnet.zip"],
+)
 
 from Models import Login, Register
+import analysis
 import sys
 import re
 import nltk
@@ -106,7 +110,7 @@ app = FastAPI()
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 JSON_FILE = "Login_Db.json"
-MODEL_PATH = "resume_pipeline (1).pkl"
+MODEL_PATH = os.getenv("MODEL_PATH", "resume_classification_model1.pkl")
 
 # --- Static & Templates ---
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -117,6 +121,9 @@ templates = Jinja2Templates(directory="templates")
 users_db: List[Dict[str, Any]] = []
 sessions: Dict[str, str] = {}
 ml_components: Dict[str, Any] = {}
+model_ready: bool = False
+# Per-session result of the most recent upload (drives dashboard + editor + JD match).
+analysis_store: Dict[str, Dict[str, Any]] = {}
 
 # --- Data Loading ---
 def load_data_from_json():
@@ -141,21 +148,87 @@ load_data_from_json()
 # --- ML Loading (Startup) ---
 @app.on_event("startup")
 async def load_ml_model():
-    global ml_components
-    if os.path.exists(MODEL_PATH):
+    """Load the classifier once at startup and verify it can predict."""
+    global model_ready
+    if not os.path.exists(MODEL_PATH):
+        print(f"WARNING: Model file '{MODEL_PATH}' not found. Resume classification disabled.")
+        return
+    try:
+        with open(MODEL_PATH, "rb") as model_file:
+            data = pickle.load(model_file)
+        # The artifact may be a bare estimator/pipeline or a dict wrapper.
+        pipeline = data.get("pipeline") or data.get("model") if isinstance(data, dict) else data
+        if pipeline is None or not hasattr(pipeline, "predict"):
+            print("ERROR: Loaded model has no .predict(); classification disabled.")
+            return
+        ml_components["pipeline"] = pipeline
+        # Health check: a model that can't predict a sample is not usable.
         try:
-            with open(MODEL_PATH, "rb") as model_file:
-                data = pickle.load(model_file)
-                if isinstance(data, dict):
-                     ml_components["pipeline"] = data.get("pipeline")
-                     ml_components["cleaner"] = data.get("cleaner")
-                else:
-                    print("WARNING: Model file structure unexpected.")
-            print("ML Model loaded successfully.")
+            pipeline.predict(["health check sample resume text"])
+            model_ready = True
+            print("ML model loaded and health check passed.")
         except Exception as e:
-            print(f"ERROR: Failed to load ML model: {e}")
-    else:
-        print(f"WARNING: Model file {MODEL_PATH} not found.")
+            print(f"WARNING: Model loaded but failed its health-check prediction: {e}")
+            print("Resume classification will be disabled until a fitted model is provided.")
+    except Exception as e:
+        print(f"ERROR: Failed to load ML model: {e}")
+
+# --- Resume Classification ---
+# Sorted so integer class indices map deterministically to a category name.
+CATEGORIES = sorted([
+    "HR", "Designer", "Information-Technology", "Teacher", "Advocate",
+    "Business-Development", "Healthcare", "Fitness", "Agriculture", "BPO",
+    "Sales", "Consultant", "Digital-Media", "Automobile", "Chef",
+    "Finance", "Apparel", "Engineering", "Accountant", "Construction",
+    "Public-Relations", "Banking", "Arts", "Aviation"
+])
+
+
+def _label_for(raw_label: Any) -> str:
+    """Map a raw model class (string label or integer index) to a category name."""
+    if isinstance(raw_label, str):
+        return raw_label
+    if hasattr(raw_label, "__index__"):
+        idx = int(raw_label)
+        return CATEGORIES[idx] if 0 <= idx < len(CATEGORIES) else f"{raw_label} (Unknown)"
+    return str(raw_label)
+
+
+def classify_resume(text: str):
+    """Classify resume text into a job category.
+
+    Returns (prediction, confidence, top_roles) where:
+      - prediction:  best-matching category name (str)
+      - confidence:  float percent (0-100) or None if the model has no probabilities
+      - top_roles:   list of {"role": str, "prob": float|None}, highest first
+
+    Raises RuntimeError if the model is not ready, or re-raises prediction errors.
+    """
+    pipeline = ml_components.get("pipeline")
+    if not model_ready or pipeline is None:
+        raise RuntimeError("Resume classification model is not ready.")
+
+    # Preferred path: a probability distribution gives us confidence + ranking.
+    if hasattr(pipeline, "predict_proba"):
+        try:
+            probs = pipeline.predict_proba([text])[0]
+            classes = getattr(pipeline, "classes_", list(range(len(probs))))
+            ranked = sorted(
+                ((_label_for(c), float(p)) for c, p in zip(classes, probs)),
+                key=lambda pair: pair[1],
+                reverse=True,
+            )
+            top_roles = [{"role": r, "prob": round(p * 100, 1)} for r, p in ranked[:3]]
+            best_role, best_prob = ranked[0]
+            return best_role, round(best_prob * 100, 1), top_roles
+        except Exception as e:
+            print(f"predict_proba failed, falling back to predict(): {e}")
+
+    # Fallback: bare label, no confidence available.
+    prediction = _label_for(pipeline.predict([text])[0])
+    return prediction, None, [{"role": prediction, "prob": None}]
+
+
 def get_current_user_from_cookie(request: Request) -> Optional[Dict[str, Any]]:
     token = request.cookies.get("session_token")
     if not token:
@@ -276,47 +349,99 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
         print(f"PDF extraction error: {e}")
         return templates.TemplateResponse("home.html", {"request": request, "username": user.get("UserName"), "error": "Could not extract text from PDF."})
     
-    with open("/Users/gojuruakshith/Resume_generator/resume_classification_model1.pkl","rb") as file:
-        ml_model = pickle.load(file)
+    if not model_ready or ml_components.get("pipeline") is None:
+        return templates.TemplateResponse("home.html", {
+            "request": request,
+            "username": user.get("UserName"),
+            "error": "Resume classification is temporarily unavailable (model not ready). "
+                     "Your file was uploaded but could not be analyzed.",
+        })
 
+    try:
+        predicted_category, confidence, top_roles = classify_resume(extracted_text)
+    except Exception as e:
+        print(f"Prediction error: {e}")
+        return templates.TemplateResponse("home.html", {
+            "request": request,
+            "username": user.get("UserName"),
+            "error": "Could not classify this resume. Please try a different file.",
+        })
 
-    prediction_id = ml_model.predict([extracted_text])[0]
-    CATEGORIES = sorted([
-        "HR", "Designer", "Information-Technology", "Teacher", "Advocate", 
-        "Business-Development", "Healthcare", "Fitness", "Agriculture", "BPO", 
-        "Sales", "Consultant", "Digital-Media", "Automobile", "Chef", 
-        "Finance", "Apparel", "Engineering", "Accountant", "Construction", 
-        "Public-Relations", "Banking", "Arts", "Aviation"
-    ])
-    
-    predicted_category = f"{prediction_id} (Unknown)"
-    if 0 <= prediction_id < len(CATEGORIES):
-        predicted_category = CATEGORIES[prediction_id]
-    
-    print(f"User: {user.get('UserName')} | File: {filename} | Category ID: {prediction_id} | Name: {predicted_category}")
+    print(f"User: {user.get('UserName')} | File: {filename} | Prediction: {predicted_category} "
+          f"| Confidence: {confidence}")
+
+    report = analysis.analyze(extracted_text)
 
     token = request.cookies.get("session_token")
+    pdf_url = f"/uploads/{safe_name}"
+    record = {
+        "username": user.get("UserName"),
+        "filename": file.filename,
+        "prediction": predicted_category,
+        "confidence": confidence,
+        "top_roles": top_roles,
+        "pdf_url": pdf_url,
+        "extracted_text": extracted_text,
+        "report": report,
+    }
     if token:
         chat_context[token] = extracted_text
+        analysis_store[token] = record
 
-    return templates.TemplateResponse("result.html", {
-        "request": request,
-        "username": user.get("UserName"),
-        "filename": filename,
-        "prediction": predicted_category,
-        "pdf_url": f"/uploads/{safe_name}",
-        "extracted_text": extracted_text
-    })
-chat_context: Dict[str, str] = {} 
+    return templates.TemplateResponse("dashboard.html", {"request": request, **record})
 
-from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
+def _record_for(request: Request) -> Optional[Dict[str, Any]]:
+    token = request.cookies.get("session_token")
+    return analysis_store.get(token) if token else None
+
+
+@app.get("/editor", response_class=HTMLResponse)
+async def editor(request: Request):
+    record = _record_for(request)
+    if not record:
+        return RedirectResponse(url="/home", status_code=302)
+    return templates.TemplateResponse("editor.html", {"request": request, **record})
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    record = _record_for(request)
+    if not record:
+        return RedirectResponse(url="/home", status_code=302)
+    return templates.TemplateResponse("dashboard.html", {"request": request, **record})
+
+
+class JDRequest(BaseModel):
+    jd_text: str
+
+
+@app.post("/match-jd")
+async def match_jd(request: Request, jd_req: JDRequest):
+    record = _record_for(request)
+    if not record:
+        return {"score": 0, "matched": [], "missing": [], "error": "No resume uploaded yet."}
+    return analysis.match_job_description(record["extracted_text"], jd_req.jd_text)
+chat_context: Dict[str, str] = {}
+
+try:
+    from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
+    from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+except Exception as e:
+    print(f"Failed to import chat dependencies: {e}")
+    HuggingFaceEndpoint = None
+    ChatHuggingFace = None
+    HumanMessage = None
+    SystemMessage = None
+    AIMessage = None
 
 
 repo_id = "meta-llama/Meta-Llama-3-8B-Instruct"
 api_token = os.getenv("HUGGINGFACE_API_TOKEN")
 
 try:
+    if HuggingFaceEndpoint is None or ChatHuggingFace is None:
+        raise RuntimeError("Chat dependencies are unavailable.")
     endpoint = HuggingFaceEndpoint(
         repo_id=repo_id,
         huggingfacehub_api_token=api_token,
@@ -342,6 +467,9 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
     
     if token not in chat_context:
         return {"reply": "I don't see a resume uploaded. Please upload a PDF resume first so I can analyze it."}
+
+    if not chat_model:
+        return {"reply": "Chat service is currently unavailable (Model not initialized)."}
 
     user_query = chat_req.message
     resume_text = chat_context[token]
@@ -375,8 +503,6 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
     history.append(HumanMessage(content=user_query))
 
     try:
-        if not chat_model:
-            return {"reply": "Chat service is currently unavailable (Model not initialized)."}
         response = chat_model.invoke(history)
         ai_reply = response.content
         history.append(AIMessage(content=ai_reply))

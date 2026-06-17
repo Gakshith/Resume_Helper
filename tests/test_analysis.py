@@ -1,0 +1,128 @@
+"""Unit tests for the pure-Python resume analysis module (TDD)."""
+import math
+
+import analysis
+
+
+SAMPLE = """
+John Doe
+Software Engineer
+
+SUMMARY
+Experienced software engineer with 5 years building scalable web applications.
+
+EXPERIENCE
+Senior Engineer, Acme Corp
+- Led a team of 5 engineers and increased deployment speed by 40%
+- Built REST APIs in Python and FastAPI serving 1M requests per day
+- Reduced infrastructure costs by $200,000 annually
+
+EDUCATION
+B.S. Computer Science, MIT
+
+SKILLS
+Python, JavaScript, React, Docker, Kubernetes, AWS, PostgreSQL
+
+PROJECTS
+- Developed an open-source library with 2000 GitHub stars
+"""
+
+WEAK = "Worked on stuff. Did things. Was responsible for the team."
+
+
+# --- detect_sections ---
+
+def test_detect_sections_finds_present_sections():
+    s = analysis.detect_sections(SAMPLE)
+    assert s["summary"] is True
+    assert s["experience"] is True
+    assert s["education"] is True
+    assert s["skills"] is True
+    assert s["projects"] is True
+
+
+def test_detect_sections_marks_missing_section():
+    s = analysis.detect_sections(SAMPLE)
+    assert s["certifications"] is False
+
+
+# --- extract_skills ---
+
+def test_extract_skills_groups_known_skills():
+    skills = analysis.extract_skills(SAMPLE)
+    flat = [x.lower() for group in skills.values() for x in group]
+    assert "python" in flat
+    assert "react" in flat
+    assert "docker" in flat
+
+
+def test_extract_skills_returns_dict_of_lists():
+    skills = analysis.extract_skills(SAMPLE)
+    assert isinstance(skills, dict)
+    assert all(isinstance(v, list) for v in skills.values())
+
+
+# --- compute_stats ---
+
+def test_compute_stats_counts_bullets_and_quantified():
+    st = analysis.compute_stats(SAMPLE)
+    assert st["bullet_count"] == 4
+    assert st["quantified_count"] >= 3
+    assert st["action_verb_count"] >= 3
+    assert st["word_count"] > 30
+    assert st["reading_time_min"] >= 1
+
+
+# --- readability ---
+
+def test_readability_returns_number():
+    r = analysis.readability(SAMPLE)
+    assert isinstance(r, (int, float))
+    assert not math.isnan(r)
+
+
+# --- resume_score ---
+
+def test_resume_score_within_bounds():
+    score = analysis.resume_score(SAMPLE)
+    assert 0 <= score["overall"] <= 100
+    for key in ("impact", "completeness", "brevity", "clarity", "keywords"):
+        assert 0 <= score["subscores"][key] <= 100
+
+
+def test_strong_resume_scores_higher_than_weak():
+    assert analysis.resume_score(SAMPLE)["overall"] > analysis.resume_score(WEAK)["overall"]
+
+
+# --- suggestions ---
+
+def test_suggestions_fire_for_weak_resume():
+    tips = analysis.suggestions(WEAK)
+    assert isinstance(tips, list)
+    assert len(tips) > 0
+    assert all(isinstance(t, str) for t in tips)
+
+
+# --- match_job_description ---
+
+def test_jd_match_identical_is_high():
+    res = analysis.match_job_description(SAMPLE, SAMPLE)
+    assert res["score"] >= 90
+
+
+def test_jd_match_reports_matched_and_missing():
+    jd = "Seeking a Python developer with FastAPI, AWS, and Kubernetes. Must know GraphQL and Rust."
+    res = analysis.match_job_description(SAMPLE, jd)
+    assert 0 <= res["score"] <= 100
+    matched = [m.lower() for m in res["matched"]]
+    missing = [m.lower() for m in res["missing"]]
+    assert "python" in matched
+    assert "rust" in missing or "graphql" in missing
+
+
+# --- analyze (aggregate) ---
+
+def test_analyze_returns_all_sections():
+    a = analysis.analyze(SAMPLE)
+    for key in ("stats", "sections", "skills", "score", "suggestions", "readability"):
+        assert key in a

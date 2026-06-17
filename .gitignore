@@ -56,3 +56,6 @@ htmlcov/
 
 # NLTK Data (downloaded at runtime)
 nltk_data/
+
+# Ruflo / claude-flow runtime data
+.claude-flow/
