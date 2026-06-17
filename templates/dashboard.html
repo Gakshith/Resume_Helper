@@ -284,6 +284,24 @@
         });
     });
 
+    // Build chips with textContent (never innerHTML) so JD keywords can't inject markup.
+    function renderChips(container, items, cls, emptyMsg) {
+        container.replaceChildren();
+        if (!items || !items.length) {
+            const e = document.createElement('span');
+            e.style.cssText = 'color:var(--faint);font-size:0.85rem;';
+            e.textContent = emptyMsg;
+            container.appendChild(e);
+            return;
+        }
+        items.forEach(function (k) {
+            const s = document.createElement('span');
+            s.className = 'chip ' + cls;
+            s.textContent = k;
+            container.appendChild(s);
+        });
+    }
+
     const jdBtn = document.getElementById('jdBtn');
     jdBtn.addEventListener('click', async function () {
         const jd = document.getElementById('jdText').value.trim();
@@ -297,9 +315,8 @@
             document.getElementById('jdMeter').style.width = '0%';
             countUp(document.getElementById('jdScoreNum'), d.score || 0);
             requestAnimationFrame(() => requestAnimationFrame(() => { document.getElementById('jdMeter').style.width = (d.score || 0) + '%'; }));
-            const matched = document.getElementById('jdMatched'), missing = document.getElementById('jdMissing');
-            matched.innerHTML = (d.matched && d.matched.length) ? d.matched.map(k => '<span class="chip ok">' + k + '</span>').join('') : '<span style="color:var(--faint);font-size:0.85rem;">None found</span>';
-            missing.innerHTML = (d.missing && d.missing.length) ? d.missing.map(k => '<span class="chip no">' + k + '</span>').join('') : '<span style="color:var(--faint);font-size:0.85rem;">None — great coverage!</span>';
+            renderChips(document.getElementById('jdMatched'), d.matched, 'ok', 'None found');
+            renderChips(document.getElementById('jdMissing'), d.missing, 'no', 'None — great coverage!');
         } catch (e) {
             alert('Match failed. Please try again.');
         } finally {

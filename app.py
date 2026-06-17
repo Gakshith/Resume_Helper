@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, Form, UploadFile, File, Depends
+from fastapi import FastAPI, Request, Form, UploadFile, File
 from pydantic import BaseModel
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -11,7 +11,6 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 from pypdf import PdfReader
 import pickle
-import os
 import nltk
 from dotenv import load_dotenv
 
@@ -49,9 +48,8 @@ ensure_nltk_resource(
     [Path.home() / "nltk_data" / "corpora" / "wordnet.zip"],
 )
 
-from Models import Login, Register
+from Models import Register
 import analysis
-import sys
 import re
 import nltk
 from nltk.corpus import stopwords
@@ -124,6 +122,8 @@ ml_components: Dict[str, Any] = {}
 model_ready: bool = False
 # Per-session result of the most recent upload (drives dashboard + editor + JD match).
 analysis_store: Dict[str, Dict[str, Any]] = {}
+# Per-session extracted resume text, used by the chat endpoint.
+chat_context: Dict[str, str] = {}
 
 # --- Data Loading ---
 def load_data_from_json():
@@ -316,8 +316,12 @@ async def home(request: Request):
 @app.get("/logout")
 async def logout(request: Request):
     token = request.cookies.get("session_token")
-    if token and token in sessions:
+    if token:
+        # Purge all per-session state so resume text does not linger after logout.
         sessions.pop(token, None)
+        analysis_store.pop(token, None)
+        chat_context.pop(token, None)
+        user_chat_histories.pop(token, None)
     resp = RedirectResponse(url="/login", status_code=303)
     resp.delete_cookie("session_token")
     return resp
@@ -422,7 +426,6 @@ async def match_jd(request: Request, jd_req: JDRequest):
     if not record:
         return {"score": 0, "matched": [], "missing": [], "error": "No resume uploaded yet."}
     return analysis.match_job_description(record["extracted_text"], jd_req.jd_text)
-chat_context: Dict[str, str] = {}
 
 try:
     from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace

@@ -120,6 +120,57 @@ def test_jd_match_reports_matched_and_missing():
     assert "rust" in missing or "graphql" in missing
 
 
+# --- edge cases from code review ---
+
+def test_empty_resume_scores_zero():
+    score = analysis.resume_score("")
+    assert score["overall"] == 0
+    assert score["subscores"]["clarity"] == 0
+
+
+def test_whitespace_resume_does_not_crash():
+    a = analysis.analyze("   \n\t ")
+    assert a["score"]["overall"] == 0
+
+
+def test_clamp_handles_out_of_range():
+    assert analysis._clamp(-5) == 0
+    assert analysis._clamp(150) == 100
+    assert analysis._clamp(49.5) == 50
+
+
+def test_jd_match_empty_inputs():
+    assert analysis.match_job_description("", "python") == {"score": 0, "matched": [], "missing": []}
+    assert analysis.match_job_description("python", "")["score"] == 0
+
+
+def test_jd_match_all_stopwords_no_crash():
+    res = analysis.match_job_description("the and or", "the and or")
+    assert isinstance(res["score"], int)
+    assert 0 <= res["score"] <= 100
+
+
+def test_detect_sections_ignores_inline_mentions():
+    text = "I have 5 years of experience and my objective is to grow. Did things daily."
+    s = analysis.detect_sections(text)
+    assert s["experience"] is False
+    assert s["summary"] is False
+
+
+def test_detect_sections_matches_real_headings():
+    text = "Professional Experience\nBuilt things.\nEducation\nBSc CS"
+    s = analysis.detect_sections(text)
+    assert s["experience"] is True
+    assert s["education"] is True
+
+
+def test_extract_skills_respects_word_boundaries():
+    flat = [x.lower() for g in analysis.extract_skills("golang postgresql javascript").values() for x in g]
+    assert "go" not in flat       # inside "golang"
+    assert "sql" not in flat       # inside "postgresql"
+    assert "java" not in flat      # inside "javascript"
+
+
 # --- analyze (aggregate) ---
 
 def test_analyze_returns_all_sections():

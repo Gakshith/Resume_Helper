@@ -6,6 +6,7 @@ Resume Intelligence Dashboard.
 """
 from __future__ import annotations
 
+import math
 import re
 from typing import Dict, List
 
@@ -98,17 +99,36 @@ def _count_syllables(word: str) -> int:
 
 
 def _clamp(value: float, lo: float = 0, hi: float = 100) -> int:
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return int(lo)
     return int(max(lo, min(hi, round(value))))
 
 
 # --- Public API -------------------------------------------------------------
 
+def _is_heading(line: str, keywords: List[str]) -> bool:
+    """A heading is a short line (<=3 words) that is or contains a section keyword.
+
+    This avoids false positives from inline prose like "5 years of experience".
+    """
+    compact = re.sub(r"[^a-z ]", "", line.lower()).strip()
+    if not compact:
+        return False
+    words = compact.split()
+    for kw in keywords:
+        if compact == kw:
+            return True
+        if len(words) <= 3 and re.search(r"\b" + re.escape(kw) + r"\b", compact):
+            return True
+    return False
+
+
 def detect_sections(text: str) -> Dict[str, bool]:
-    """Return which standard resume sections are present."""
-    low = (text or "").lower()
+    """Return which standard resume sections are present (heading-based)."""
+    lines = (text or "").splitlines()
     result = {}
     for section, keywords in SECTION_KEYWORDS.items():
-        result[section] = any(kw in low for kw in keywords)
+        result[section] = any(_is_heading(line, keywords) for line in lines)
     return result
 
 
@@ -181,9 +201,13 @@ def resume_score(text: str) -> Dict:
     else:
         brevity = _clamp(100 - (wc - 850) / 12)
 
-    flesch = readability(text)
-    # 30-70 Flesch is the sweet spot for professional prose.
-    clarity = _clamp(100 - abs(50 - max(0, min(100, flesch))) * 1.4)
+    # No words => nothing to read; clarity is 0 (not the formula's midpoint).
+    if stats["word_count"] == 0:
+        clarity = 0
+    else:
+        flesch = readability(text)
+        # 30-70 Flesch is the sweet spot for professional prose.
+        clarity = _clamp(100 - abs(50 - max(0, min(100, flesch))) * 1.4)
 
     keywords = _clamp(n_skills * 10)
 
@@ -249,8 +273,16 @@ def match_job_description(resume_text: str, jd_text: str) -> Dict:
         from sklearn.metrics.pairwise import cosine_similarity
         tfidf = TfidfVectorizer(stop_words="english").fit_transform([resume_text, jd_text])
         cosine = float(cosine_similarity(tfidf[0:1], tfidf[1:2])[0][0])
-    except Exception:
+    except ImportError:
+        # scikit-learn unavailable: fall back to keyword-overlap only.
+        print("analysis: scikit-learn not installed; JD match uses keyword overlap only.")
         cosine = 0.0
+    except Exception as e:
+        print(f"analysis: JD cosine failed ({e}); using keyword overlap only.")
+        cosine = 0.0
+    if math.isnan(cosine):
+        cosine = 0.0
+    cosine = max(0.0, min(1.0, cosine))
 
     resume_terms = set(_tokens(resume_text))
     jd_terms = []
