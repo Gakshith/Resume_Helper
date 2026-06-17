@@ -24,6 +24,10 @@ nltk==3.8.1
 langchain-huggingface==0.0.1
 langchain-core==0.1.52
 
+# Security
+passlib==1.7.4
+bcrypt==4.0.1  # pinned: passlib 1.7.4 is incompatible with bcrypt >= 4.1
+
 # Environment Variables
 python-dotenv==1.0.0
 

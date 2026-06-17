@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Request, Form, UploadFile, File
 from pydantic import BaseModel
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from passlib.context import CryptContext
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 import json
@@ -112,7 +113,8 @@ MODEL_PATH = os.getenv("MODEL_PATH", "resume_classification_model1.pkl")
 
 # --- Static & Templates ---
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# NOTE: /uploads is intentionally NOT a public static mount. Resumes are private PII;
+# they are served by the authorized /uploads/{name} route below (owner check).
 templates = Jinja2Templates(directory="templates")
 
 # --- Global State ---
@@ -124,6 +126,30 @@ model_ready: bool = False
 analysis_store: Dict[str, Dict[str, Any]] = {}
 # Per-session extracted resume text, used by the chat endpoint.
 chat_context: Dict[str, str] = {}
+# Maps stored upload filename -> owning username, for per-user PDF authorization.
+upload_owners: Dict[str, str] = {}
+
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+
+# --- Password hashing ---
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def hash_password(plain: str) -> str:
+    return pwd_context.hash(plain)
+
+
+def verify_password(plain: str, user: Dict[str, Any]) -> bool:
+    """Verify a password, transparently migrating legacy plaintext records to hashes."""
+    stored = user.get("Password", "")
+    if stored.startswith("$2"):  # bcrypt hash
+        return pwd_context.verify(plain, stored)
+    # Legacy plaintext record: compare, and upgrade to a hash on success.
+    if stored == plain:
+        user["Password"] = hash_password(plain)
+        save_data_to_json()
+        return True
+    return False
 
 # --- Data Loading ---
 def load_data_from_json():
@@ -272,12 +298,13 @@ async def register(request: Request, UserName: str = Form(...), Password: str = 
     try:
         reg_data = Register(UserName=UserName, Password=Password)
     except Exception as e:
-        return templates.TemplateResponse("register.html", {"request": request, "error": f"Invalid data: {e}"}, status_code=400)
+        print(f"Register validation error: {e}")
+        return templates.TemplateResponse("register.html", {"request": request, "error": "Invalid username or password."}, status_code=400)
 
     if any(u.get("UserName") == reg_data.UserName for u in users_db):
          return templates.TemplateResponse("register.html", {"request": request, "error": "Username already taken."}, status_code=409)
 
-    new_user = {"UserName": reg_data.UserName, "Password": reg_data.Password}
+    new_user = {"UserName": reg_data.UserName, "Password": hash_password(reg_data.Password)}
     users_db.append(new_user)
     save_data_to_json()
 
@@ -290,8 +317,8 @@ async def login_page(request: Request):
 @app.post("/login", response_class=HTMLResponse)
 async def login(request: Request, UserName: str = Form(...), Password: str = Form(...)):
     user = next((u for u in users_db if u.get("UserName") == UserName), None)
-    
-    if user is None or user.get("Password") != Password:
+
+    if user is None or not verify_password(Password, user):
         return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid credentials"}, status_code=401)
 
     token = secrets.token_urlsafe(32)
@@ -302,6 +329,7 @@ async def login(request: Request, UserName: str = Form(...), Password: str = For
         value=token,
         httponly=True,
         samesite="lax",
+        max_age=86400,
     )
     return resp
 
@@ -335,14 +363,34 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
     filename = (file.filename or "").lower()
     if not filename.endswith(".pdf"):
          return templates.TemplateResponse("home.html", {"request": request, "username": user.get("UserName"), "error": "Only PDF files are allowed."})
-    safe_name = f"{secrets.token_hex(8)}_{file.filename}"
-    save_path = UPLOAD_DIR / safe_name
-    
+
+    # Reject oversized uploads early via the declared content length.
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_UPLOAD_BYTES:
+        return templates.TemplateResponse("home.html", {"request": request, "username": user.get("UserName"), "error": "File too large (max 5 MB)."})
+
     try:
         content = await file.read()
-        save_path.write_bytes(content)
     except Exception as e:
-         return templates.TemplateResponse("home.html", {"request": request, "username": user.get("UserName"), "error": f"Upload failed: {e}"})
+        print(f"Upload read error: {e}")
+        return templates.TemplateResponse("home.html", {"request": request, "username": user.get("UserName"), "error": "Upload failed, please try again."})
+
+    if len(content) > MAX_UPLOAD_BYTES:
+        return templates.TemplateResponse("home.html", {"request": request, "username": user.get("UserName"), "error": "File too large (max 5 MB)."})
+    if not content[:5].startswith(b"%PDF"):
+        return templates.TemplateResponse("home.html", {"request": request, "username": user.get("UserName"), "error": "That file is not a valid PDF."})
+
+    # Never use the client-supplied filename on disk (path-traversal safe).
+    safe_name = f"{secrets.token_hex(8)}.pdf"
+    save_path = (UPLOAD_DIR / safe_name).resolve()
+    if not str(save_path).startswith(str(UPLOAD_DIR.resolve()) + os.sep):
+        return templates.TemplateResponse("home.html", {"request": request, "username": user.get("UserName"), "error": "Upload failed, please try again."})
+    try:
+        save_path.write_bytes(content)
+        upload_owners[safe_name] = user.get("UserName")
+    except Exception as e:
+        print(f"Upload write error: {e}")
+        return templates.TemplateResponse("home.html", {"request": request, "username": user.get("UserName"), "error": "Upload failed, please try again."})
 
     extracted_text = ""
     try:
@@ -426,6 +474,22 @@ async def match_jd(request: Request, jd_req: JDRequest):
     if not record:
         return {"score": 0, "matched": [], "missing": [], "error": "No resume uploaded yet."}
     return analysis.match_job_description(record["extracted_text"], jd_req.jd_text)
+
+
+@app.get("/uploads/{name}")
+async def serve_upload(request: Request, name: str):
+    """Serve an uploaded PDF only to the user who uploaded it."""
+    user = get_current_user_from_cookie(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if "/" in name or "\\" in name or ".." in name:
+        return PlainTextResponse("Not found", status_code=404)
+    if upload_owners.get(name) != user.get("UserName"):
+        return PlainTextResponse("Forbidden", status_code=403)
+    path = (UPLOAD_DIR / name).resolve()
+    if not str(path).startswith(str(UPLOAD_DIR.resolve()) + os.sep) or not path.exists():
+        return PlainTextResponse("Not found", status_code=404)
+    return FileResponse(str(path), media_type="application/pdf")
 
 try:
     from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
