@@ -268,9 +268,9 @@ def get_current_user_from_cookie(request: Request) -> Optional[Dict[str, Any]]:
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         public_paths = {
-            "/", "/login", "/register", "/logout",
+            "/", "/landing", "/login", "/register", "/logout",
             "/docs", "/openapi.json", "/static/style.css",
-            "/chat" 
+            "/chat"
         }
         if request.url.path.startswith("/static"):
              return await call_next(request)
@@ -287,7 +287,12 @@ app.add_middleware(AuthMiddleware)
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    return RedirectResponse(url="/login")
+    return RedirectResponse(url="/landing")
+
+
+@app.get("/landing", response_class=HTMLResponse)
+async def landing(request: Request):
+    return templates.TemplateResponse("landing.html", {"request": request})
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
@@ -490,6 +495,60 @@ async def serve_upload(request: Request, name: str):
     if not str(path).startswith(str(UPLOAD_DIR.resolve()) + os.sep) or not path.exists():
         return PlainTextResponse("Not found", status_code=404)
     return FileResponse(str(path), media_type="application/pdf")
+
+
+@app.get("/cover-letter", response_class=HTMLResponse)
+async def cover_letter_page(request: Request):
+    record = _record_for(request)
+    if not record:
+        return RedirectResponse(url="/home", status_code=302)
+    return templates.TemplateResponse("cover_letter.html", {
+        "request": request, "username": record["username"], "letter": None, "role": "", "company": "",
+    })
+
+
+@app.post("/cover-letter", response_class=HTMLResponse)
+async def cover_letter_make(request: Request, role: str = Form(""), company: str = Form("")):
+    record = _record_for(request)
+    if not record:
+        return RedirectResponse(url="/home", status_code=302)
+    letter = analysis.generate_cover_letter(record["extracted_text"], role[:200], company[:200])
+    return templates.TemplateResponse("cover_letter.html", {
+        "request": request, "username": record["username"], "letter": letter, "role": role, "company": company,
+    })
+
+
+@app.get("/compare", response_class=HTMLResponse)
+async def compare_page(request: Request):
+    record = _record_for(request)
+    if not record:
+        return RedirectResponse(url="/home", status_code=302)
+    return templates.TemplateResponse("compare.html", {"request": request, "username": record["username"]})
+
+
+class CompareRequest(BaseModel):
+    jobs_text: str
+
+
+@app.post("/compare-jobs")
+async def compare_jobs(request: Request, req: CompareRequest):
+    record = _record_for(request)
+    if not record:
+        return {"results": [], "error": "No resume uploaded yet."}
+    jobs_text = req.jobs_text or ""
+    if len(jobs_text) > 200_000:
+        return {"results": [], "error": "Input too large (max ~200 KB)."}
+    # Split on a line of 3+ dashes, tolerant of surrounding whitespace and edges.
+    chunks = re.split(r"(?m)^[ \t]*-{3,}[ \t]*$", jobs_text)
+    jobs = []
+    for ch in chunks:
+        ch = ch.strip()
+        if not ch:
+            continue
+        first = ch.split("\n", 1)[0].strip()
+        jobs.append({"title": first[:80] or "Untitled role", "text": ch})
+    return {"results": analysis.rank_jobs(record["extracted_text"], jobs)}
+
 
 try:
     from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace

@@ -27,6 +27,8 @@
     --tile: rgba(255, 255, 255, 0.04);
     --input-bg: rgba(7, 11, 22, 0.55);
     --chip-accent-text: #c7d2fe;
+    --chip-ok-text: #6ee7b7;
+    --chip-no-text: #fcd34d;
     --backdrop-opacity: 1;
     --radius: 16px;
     --radius-sm: 11px;
@@ -49,6 +51,8 @@
     --tile: rgba(15, 23, 42, 0.035);
     --input-bg: #ffffff;
     --chip-accent-text: #4338ca;
+    --chip-ok-text: #047857;
+    --chip-no-text: #92660a;
     --backdrop-opacity: 0.55;
     --shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
 }
@@ -64,21 +68,33 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-/* Aurora backdrop */
-body::before {
+/* Animated mesh-gradient backdrop (two drifting blurred layers) */
+body::before, body::after {
     content: '';
     position: fixed;
-    inset: 0;
-    background:
-        radial-gradient(38rem 38rem at 12% 8%, rgba(99, 102, 241, 0.22), transparent 60%),
-        radial-gradient(34rem 34rem at 88% 12%, rgba(34, 211, 238, 0.16), transparent 60%),
-        radial-gradient(40rem 40rem at 70% 100%, rgba(217, 70, 239, 0.16), transparent 62%);
-    animation: drift 18s ease-in-out infinite alternate;
-    opacity: var(--backdrop-opacity);
+    inset: -25%;
     z-index: 0;
     pointer-events: none;
+    opacity: var(--backdrop-opacity);
+    will-change: transform;
 }
-@keyframes drift { from { transform: translateY(-1%) scale(1); } to { transform: translateY(2%) scale(1.05); } }
+body::before {
+    background:
+        radial-gradient(32rem 32rem at 18% 22%, rgba(99, 102, 241, 0.32), transparent 60%),
+        radial-gradient(28rem 28rem at 82% 18%, rgba(34, 211, 238, 0.24), transparent 60%);
+    filter: blur(22px);
+    animation: meshA 26s ease-in-out infinite alternate;
+}
+body::after {
+    background:
+        radial-gradient(36rem 36rem at 76% 82%, rgba(217, 70, 239, 0.26), transparent 62%),
+        radial-gradient(26rem 26rem at 24% 86%, rgba(99, 102, 241, 0.22), transparent 60%);
+    filter: blur(26px);
+    animation: meshB 32s ease-in-out infinite alternate;
+}
+@keyframes meshA { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(6%, 4%) scale(1.12); } }
+@keyframes meshB { 0% { transform: translate(0, 0) scale(1.05); } 100% { transform: translate(-5%, -6%) scale(1); } }
+@media (prefers-reduced-motion: reduce) { body::before, body::after { animation: none; } }
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -165,6 +181,9 @@ body::before {
     background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
 }
 .chip.accent { background: rgba(99, 102, 241, 0.16); border-color: rgba(99, 102, 241, 0.32); color: var(--chip-accent-text); }
+.chip.ok { background: rgba(52, 211, 153, 0.12); border-color: rgba(52, 211, 153, 0.3); color: var(--chip-ok-text); }
+.chip.no { background: rgba(251, 191, 36, 0.12); border-color: rgba(251, 191, 36, 0.3); color: var(--chip-no-text); }
+.skill-chips { display: flex; flex-wrap: wrap; gap: 0.45rem; }
 
 /* Meters */
 .meter { height: 8px; border-radius: 99px; background: var(--track); overflow: hidden; }

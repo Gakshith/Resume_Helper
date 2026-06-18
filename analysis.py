@@ -350,6 +350,72 @@ def extract_timeline(text: str) -> List[Dict]:
     return entries[:12]
 
 
+_NON_NAME = {"resume", "curriculum", "vitae", "cv", "profile", "summary", "objective",
+             "experience", "education", "skills", "projects", "contact", "portfolio"}
+_TITLE_WORDS = {"engineer", "developer", "manager", "analyst", "designer", "consultant",
+                "scientist", "intern", "specialist", "administrator", "architect", "lead",
+                "senior", "junior", "officer", "director", "coordinator", "associate",
+                "executive"}
+
+
+def _candidate_name(text: str) -> str:
+    """Best-effort extraction of the candidate's name (first Title-Case 2-4 word line).
+
+    Rejects document/section words ("Resume") and job titles ("Software Engineer") so a
+    cover letter is never signed with a heading. Falls back to "Candidate".
+    """
+    for line in (text or "").splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if any(c.isdigit() for c in s) or "@" in s or len(s) > 40:
+            break
+        words = s.split()
+        low = [w.lower() for w in words]
+        if (2 <= len(words) <= 4
+                and all(w[0].isalpha() and w[0].isupper() for w in words)
+                and not any(w in _NON_NAME or w in _TITLE_WORDS for w in low)):
+            return s
+        break
+    return "Candidate"
+
+
+def generate_cover_letter(resume_text: str, role: str, company: str) -> str:
+    """Draft a tailored 3-paragraph cover letter from the resume (template-based)."""
+    role = (role or "the role").strip() or "the role"
+    company = (company or "your company").strip() or "your company"
+    name = _candidate_name(resume_text)
+    flat = [s for group in extract_skills(resume_text).values() for s in group]
+    top = flat[:5]
+    if top:
+        joined = ", ".join(top[:-1]) + ((" and " + top[-1]) if len(top) > 1 else top[0])
+        skills_sentence = f"My background includes hands-on experience with {joined}. "
+    else:
+        skills_sentence = "I bring a fast-learning, results-oriented background. "
+
+    return (
+        f"Dear Hiring Manager,\n\n"
+        f"I am excited to apply for the {role} position at {company}. The opportunity to "
+        f"contribute to your team aligns strongly with my skills and career goals.\n\n"
+        f"{skills_sentence}I focus on delivering measurable impact, collaborating across "
+        f"teams, and continuously raising the quality of my work.\n\n"
+        f"I would welcome the chance to discuss how I can help {company} succeed in the "
+        f"{role} role. Thank you for your time and consideration.\n\n"
+        f"Sincerely,\n{name}"
+    )
+
+
+def rank_jobs(resume_text: str, jobs: List[Dict]) -> List[Dict]:
+    """Rank the resume against several jobs (highest match first)."""
+    results = []
+    for job in jobs or []:
+        title = (job.get("title") or "Untitled role").strip() or "Untitled role"
+        m = match_job_description(resume_text, job.get("text") or "")
+        results.append({"title": title, "score": m["score"], "matched": m["matched"], "missing": m["missing"]})
+    results.sort(key=lambda r: r["score"], reverse=True)
+    return results
+
+
 def analyze(text: str) -> Dict:
     """One call returning everything the dashboard needs."""
     return {

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Cover Letter · ResumeAI{% endblock %}
+{% block head %}
+<style>
+    .cl-grid { display: grid; grid-template-columns: 340px 1fr; gap: 1.1rem; align-items: start; }
+    @media (max-width: 820px) { .cl-grid { grid-template-columns: 1fr; } }
+    .cl-letter { width: 100%; min-height: 460px; resize: vertical; line-height: 1.6; font-size: 0.95rem; white-space: pre-wrap; }
+    .cl-actions { display: flex; gap: 0.6rem; margin-top: 0.8rem; flex-wrap: wrap; }
+    .cl-empty { color: var(--faint); display: grid; place-items: center; min-height: 460px; text-align: center; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="shell">
+    <div class="topbar">
+        <a href="/dashboard" class="brand">
+            <div class="brand-icon"><i class="ti ti-file-text" style="font-size:24px"></i></div>
+            <div class="brand-name">Resume<span>AI</span></div>
+        </a>
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+            <a href="/dashboard" class="btn btn-ghost btn-sm"><i class="ti ti-arrow-left"></i> Dashboard</a>
+            <a href="/logout" class="btn btn-danger btn-sm"><i class="ti ti-logout"></i> Sign out</a>
+        </div>
+    </div>
+
+    <div class="hero" style="margin:0.5rem 0 1.5rem;">
+        <h1 style="font-size:clamp(1.6rem,3vw,2.2rem);"><span>Cover letter</span> generator</h1>
+        <p>Generated from your resume — just add the role and company.</p>
+    </div>
+
+    <div class="cl-grid">
+        <div class="card">
+            <div class="card-title"><i class="ti ti-edit"></i> Target role</div>
+            <form action="/cover-letter" method="post">
+                <div class="form-group"><label class="form-label">Role / job title</label>
+                    <input class="form-input" name="role" value="{{ role }}" placeholder="e.g. Machine Learning Engineer" required></div>
+                <div class="form-group"><label class="form-label">Company</label>
+                    <input class="form-input" name="company" value="{{ company }}" placeholder="e.g. Nebius" required></div>
+                <button class="btn btn-primary btn-block" type="submit"><i class="ti ti-wand"></i> Generate cover letter</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <div class="card-title"><i class="ti ti-mail"></i> Your cover letter</div>
+            {% if letter %}
+            <textarea class="form-input cl-letter" id="letterBox">{{ letter }}</textarea>
+            <div class="cl-actions">
+                <button class="btn btn-ghost btn-sm" onclick="copyLetter()"><i class="ti ti-copy"></i> Copy</button>
+                <button class="btn btn-ghost btn-sm" onclick="downloadLetter()"><i class="ti ti-download"></i> Download .txt</button>
+            </div>
+            {% else %}
+            <div class="cl-empty"><span><i class="ti ti-mail-fast" style="font-size:26px;display:block;margin-bottom:0.5rem;"></i>Fill in the role &amp; company, then generate.</span></div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    function copyLetter() { var t = document.getElementById('letterBox'); t.select(); navigator.clipboard.writeText(t.value); }
+    function downloadLetter() {
+        var t = document.getElementById('letterBox').value;
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([t], { type: 'text/plain' }));
+        a.download = 'cover-letter.txt'; a.click(); URL.revokeObjectURL(a.href);
+    }
+</script>
+{% endblock %}

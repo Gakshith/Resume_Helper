@@ -208,6 +208,41 @@ def test_extract_timeline_empty():
     assert analysis.extract_timeline("no dates here at all") == []
 
 
+# --- cover letter ---
+
+def test_cover_letter_includes_role_company_and_skill():
+    letter = analysis.generate_cover_letter(SAMPLE, "Machine Learning Engineer", "Nebius")
+    assert "Machine Learning Engineer" in letter
+    assert "Nebius" in letter
+    assert len(letter) > 200
+    flat = [s.lower() for g in analysis.extract_skills(SAMPLE).values() for s in g]
+    assert any(s in letter.lower() for s in flat)
+
+
+def test_cover_letter_empty_resume_safe():
+    letter = analysis.generate_cover_letter("", "Developer", "Acme")
+    assert isinstance(letter, str)
+    assert "Developer" in letter and "Acme" in letter
+
+
+# --- rank jobs ---
+
+def test_rank_jobs_sorts_by_score():
+    jobs = [
+        {"title": "ML Engineer", "text": "Python PyTorch AWS Docker machine learning data"},
+        {"title": "Sales Rep", "text": "cold calling quotas CRM salesforce negotiation retail"},
+    ]
+    ranked = analysis.rank_jobs(SAMPLE, jobs)
+    assert len(ranked) == 2
+    assert ranked[0]["score"] >= ranked[1]["score"]
+    assert ranked[0]["title"] == "ML Engineer"
+    assert "matched" in ranked[0] and "missing" in ranked[0]
+
+
+def test_rank_jobs_empty():
+    assert analysis.rank_jobs(SAMPLE, []) == []
+
+
 # --- analyze (aggregate) ---
 
 def test_analyze_returns_all_sections():

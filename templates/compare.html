@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Compare Jobs · ResumeAI{% endblock %}
+{% block head %}
+<style>
+    .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; align-items: start; }
+    @media (max-width: 820px) { .cmp-grid { grid-template-columns: 1fr; } }
+    .cmp-jd { width: 100%; min-height: 320px; resize: vertical; line-height: 1.5; font-size: 0.9rem; }
+    .rank { border: 1px solid var(--border); border-radius: 13px; padding: 1rem; margin-bottom: 0.8rem; background: var(--tile); animation: pop 0.4s ease both; }
+    .rank.best { border-color: rgba(99,102,241,0.5); box-shadow: 0 0 0 1px rgba(99,102,241,0.35); }
+    .rank-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .rank-title { font-weight: 700; font-size: 0.95rem; }
+    .rank-pct { font-size: 1.2rem; font-weight: 800; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .rank-badge { font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--cyan); background: rgba(34,211,238,0.12); padding: 0.2rem 0.5rem; border-radius: 999px; }
+    .cmp-empty { color: var(--faint); display: grid; place-items: center; min-height: 200px; text-align: center; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="shell">
+    <div class="topbar">
+        <a href="/dashboard" class="brand">
+            <div class="brand-icon"><i class="ti ti-file-text" style="font-size:24px"></i></div>
+            <div class="brand-name">Resume<span>AI</span></div>
+        </a>
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+            <a href="/dashboard" class="btn btn-ghost btn-sm"><i class="ti ti-arrow-left"></i> Dashboard</a>
+            <a href="/logout" class="btn btn-danger btn-sm"><i class="ti ti-logout"></i> Sign out</a>
+        </div>
+    </div>
+
+    <div class="hero" style="margin:0.5rem 0 1.5rem;">
+        <h1 style="font-size:clamp(1.6rem,3vw,2.2rem);"><span>Compare</span> multiple jobs</h1>
+        <p>Paste several job descriptions (separate each with a line of <code>---</code>). We'll rank your resume against all of them.</p>
+    </div>
+
+    <div class="cmp-grid">
+        <div class="card">
+            <div class="card-title"><i class="ti ti-clipboard-list"></i> Job descriptions</div>
+            <textarea class="form-input cmp-jd" id="jobsText" placeholder="Paste job 1...&#10;---&#10;Paste job 2...&#10;---&#10;Paste job 3..."></textarea>
+            <button class="btn btn-primary" id="cmpBtn" style="margin-top:0.8rem;"><i class="ti ti-arrows-sort"></i> Rank my fit</button>
+        </div>
+        <div class="card">
+            <div class="card-title"><i class="ti ti-trophy"></i> Ranked results</div>
+            <div id="cmpResults"><div class="cmp-empty"><span><i class="ti ti-arrow-left" style="font-size:22px;display:block;margin-bottom:0.4rem;"></i>Paste jobs and rank to see your best fit.</span></div></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    function chips(arr, cls) {
+        var wrap = document.createElement('div'); wrap.className = 'skill-chips'; wrap.style.marginTop = '0.4rem';
+        (arr || []).slice(0, 12).forEach(function (k) { var s = document.createElement('span'); s.className = 'chip ' + cls; s.textContent = k; wrap.appendChild(s); });
+        return wrap;
+    }
+    document.getElementById('cmpBtn').addEventListener('click', async function () {
+        var btn = this, txt = document.getElementById('jobsText').value.trim();
+        if (!txt) { document.getElementById('jobsText').focus(); return; }
+        btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2"></i> Ranking…';
+        try {
+            var r = await fetch('/compare-jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobs_text: txt }) });
+            var d = await r.json();
+            var box = document.getElementById('cmpResults'); box.replaceChildren();
+            if (!d.results || !d.results.length) { box.innerHTML = '<div class="cmp-empty"><span>No jobs detected. Separate each with a line of ---</span></div>'; return; }
+            d.results.forEach(function (res, i) {
+                var card = document.createElement('div'); card.className = 'rank' + (i === 0 ? ' best' : '');
+                var head = document.createElement('div'); head.className = 'rank-head';
+                var left = document.createElement('div'); left.style.display = 'flex'; left.style.alignItems = 'center'; left.style.gap = '0.5rem';
+                var t = document.createElement('span'); t.className = 'rank-title'; t.textContent = res.title; left.appendChild(t);
+                if (i === 0) { var b = document.createElement('span'); b.className = 'rank-badge'; b.textContent = 'Best fit'; left.appendChild(b); }
+                var pct = document.createElement('span'); pct.className = 'rank-pct'; pct.textContent = res.score + '%';
+                head.appendChild(left); head.appendChild(pct); card.appendChild(head);
+                var meter = document.createElement('div'); meter.className = 'meter';
+                var fill = document.createElement('span'); fill.style.width = '0%'; fill.style.display = 'block'; fill.style.height = '100%';
+                fill.style.background = 'var(--grad)'; fill.style.borderRadius = '99px'; fill.style.transition = 'width 1s ease';
+                meter.appendChild(fill); card.appendChild(meter);
+                if (res.missing && res.missing.length) { var lbl = document.createElement('div'); lbl.style.cssText = 'font-size:0.7rem;font-weight:700;color:var(--warning);margin-top:0.6rem;'; lbl.textContent = 'MISSING'; card.appendChild(lbl); card.appendChild(chips(res.missing, 'no')); }
+                box.appendChild(card);
+                requestAnimationFrame(function () { requestAnimationFrame(function () { fill.style.width = Math.max(2, res.score) + '%'; }); });
+            });
+        } catch (e) { alert('Ranking failed. Please try again.'); }
+        finally { btn.disabled = false; btn.innerHTML = '<i class="ti ti-arrows-sort"></i> Rank my fit'; }
+    });
+</script>
+{% endblock %}
