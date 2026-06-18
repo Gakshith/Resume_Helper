@@ -1,8 +1,33 @@
 # CLAUDE.md
 
+## ⚡ START HERE — current state & where knowledge lives (read first)
+
+**New session? Read these to understand the project before doing anything:**
+1. `../../../Plans/ROADMAP.md` (container) — status, backlog, constraints. **Single source of truth for what's done & next.**
+2. `docs/superpowers/specs/` — design specs (dashboard, security, v3 visuals).
+3. `docs/superpowers/plans/` — implementation plans (e.g. the pending AI-chat fix).
+4. Ruflo semantic memory — `memory_search` in namespace `resume_helper` for cross-session context.
+
+**Current state (2026-06-18):** main has v1→v3. The app is a **Resume Intelligence
+Dashboard** (Aurora dark + light theme toggle): resume score gauge + 5 sub-scores,
+section detection, skills chips, JD matcher, suggestions, top-3 role prediction,
+**radar chart**, **career timeline**, Quill editor + AI chat. Security is hardened
+(bcrypt password hashing+migration, upload size/magic-byte checks, per-user PDF authz).
+`analysis.py` holds the pure logic (24 pytest tests in `tests/`).
+**Known remaining bug:** the `/chat` AI consultant — langchain-core 0.1.52 is
+incompatible with Python 3.12 and it needs `HUGGINGFACE_API_TOKEN` (plan written).
+
+**Process discipline:** for every task write the spec + plan BEFORE coding, update
+`Plans/ROADMAP.md`, put deliverables in `Artifacts/`, persist context to Ruflo memory.
+
 ## Project Overview
 
-Resume_Helper is a FastAPI web app for resume upload, classification, editing, and AI-assisted career feedback. Users register/login, upload a PDF resume, the backend extracts text with `pypdf`, predicts a job category with a pickled scikit-learn model, then renders a result page with the original PDF, a Quill-based editable text view, PDF export, and a HuggingFace-backed chat sidebar.
+Resume_Helper is a FastAPI web app for resume upload, ML classification, a rich
+analysis dashboard, inline editing, and an (currently broken) AI career-consultant
+chat. Users register/login, upload a PDF, the backend extracts text with `pypdf`,
+predicts a job category with a pickled scikit-learn model, computes a full analysis
+report (`analysis.py`), and renders `dashboard.html`; `editor.html` provides a Quill
+editor + PDF view + chat. Templates extend `base.html` and share `static/css/app.css`.
 
 ## Tech Stack
 
@@ -65,7 +90,11 @@ The default URL is `http://localhost:8000`.
 .venv/bin/uvicorn app:app --reload
 ```
 
-There is no test suite currently.
+Tests: `tests/test_analysis.py` (24 pytest tests over the pure logic in `analysis.py`).
+Run with `.venv/bin/python -m pytest tests/ -q`. NOTE: several "Known Issues" listed
+further below are now FIXED (static/ exists, model loads via startup, passwords are
+hashed, result.html replaced by dashboard.html/editor.html) — trust the "START HERE"
+block at the top for current state.
 
 ## Architecture
 
