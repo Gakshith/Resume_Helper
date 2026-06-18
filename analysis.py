@@ -6,6 +6,7 @@ Resume Intelligence Dashboard.
 """
 from __future__ import annotations
 
+import datetime
 import math
 import re
 from typing import Dict, List
@@ -308,6 +309,47 @@ def match_job_description(resume_text: str, jd_text: str) -> Dict:
     }
 
 
+_YEAR = r"(?:19|20)\d{2}"
+_MON = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?"
+_TIMELINE_RE = re.compile(
+    r"(?:" + _MON + r"\s*)?(?:\d{1,2}[/-])?(" + _YEAR + r")"          # group 1: start year
+    r"\s*(?:[-–—]|\bto\b)\s*"                                          # separator
+    r"(?:(?:(?:" + _MON + r"\s*)?(?:\d{1,2}[/-])?(" + _YEAR + r"))"     # group 2: end year
+    r"|(present|current|now|till\s*date|to\s*date))",                  # group 3: open-ended
+    re.IGNORECASE,
+)
+
+
+def extract_timeline(text: str) -> List[Dict]:
+    """Parse dated experience/education ranges into a chronological timeline."""
+    current_year = datetime.date.today().year
+    entries: List[Dict] = []
+    for line in (text or "").splitlines():
+        line = line.strip()
+        m = _TIMELINE_RE.search(line)
+        if not m:
+            continue
+        start_year = int(m.group(1))
+        if m.group(2):
+            end_year = int(m.group(2))
+            end = str(end_year)
+        else:
+            end = "Present"
+            end_year = current_year
+        label = (line[:m.start()] + " " + line[m.end():]).strip(" ,-–—\t|·•")
+        label = re.sub(r"\s{2,}", " ", label)
+        if len(label) < 3:
+            label = line
+        entries.append({
+            "label": label,
+            "start_year": start_year,
+            "end_year": end_year,
+            "end": end,
+        })
+    entries.sort(key=lambda e: (e["start_year"], e["end_year"]), reverse=True)
+    return entries[:12]
+
+
 def analyze(text: str) -> Dict:
     """One call returning everything the dashboard needs."""
     return {
@@ -317,4 +359,5 @@ def analyze(text: str) -> Dict:
         "score": resume_score(text),
         "suggestions": suggestions(text),
         "readability": readability(text),
+        "timeline": extract_timeline(text),
     }

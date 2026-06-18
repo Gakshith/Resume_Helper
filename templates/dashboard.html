@@ -14,7 +14,7 @@
     /* Gauge */
     .gauge-wrap { display: grid; place-items: center; position: relative; }
     .gauge-wrap svg { transform: rotate(-90deg); }
-    .gauge-bg { fill: none; stroke: rgba(255,255,255,0.08); }
+    .gauge-bg { fill: none; stroke: var(--track); }
     .gauge-fg { fill: none; stroke: url(#scoreGrad); stroke-linecap: round; transition: stroke-dashoffset 1.4s cubic-bezier(0.22,1,0.36,1); }
     .gauge-center { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
     .gauge-num { font-size: 2.6rem; font-weight: 850; letter-spacing: -0.03em; line-height: 1; }
@@ -31,7 +31,7 @@
     /* Confidence ring (best match) */
     .ring-wrap { display: grid; place-items: center; position: relative; margin-bottom: 0.4rem; }
     .ring-wrap svg { transform: rotate(-90deg); }
-    .ring-bg { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 10; }
+    .ring-bg { fill: none; stroke: var(--track); stroke-width: 10; }
     .ring-fg { fill: none; stroke: url(#scoreGrad); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 1.3s cubic-bezier(0.22,1,0.36,1); }
     .ring-center { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
     .ring-center .p { font-size: 1.5rem; font-weight: 800; }
@@ -52,7 +52,7 @@
 
     /* Stat tiles */
     .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-    .stat { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem; }
+    .stat { background: var(--tile); border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem; }
     .stat .n { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em; }
     .stat .l { font-size: 0.74rem; color: var(--muted); margin-top: 0.15rem; }
 
@@ -78,7 +78,18 @@
     .chip.ok { background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.3); color: #6ee7b7; }
     .chip.no { background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.28); color: #fcd34d; }
     .jd-empty { color: var(--faint); font-size: 0.9rem; display: grid; place-items: center; height: 100%; text-align: center; }
+
+    .radar-wrap { position: relative; height: 250px; }
+    .timeline { position: relative; padding-left: 1.4rem; }
+    .timeline::before { content: ''; position: absolute; left: 5px; top: 4px; bottom: 4px; width: 2px; background: var(--track); }
+    .tl-item { position: relative; padding: 0 0 1.05rem 0.4rem; }
+    .tl-item:last-child { padding-bottom: 0; }
+    .tl-dot { position: absolute; left: -1.4rem; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--grad); box-shadow: 0 0 0 3px var(--bg); }
+    .tl-when { font-size: 0.72rem; font-weight: 700; color: var(--cyan); letter-spacing: 0.03em; }
+    .tl-label { font-size: 0.9rem; font-weight: 600; margin-top: 0.1rem; }
+    .tl-empty { color: var(--faint); font-size: 0.9rem; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 {% endblock %}
 
 {% block body %}
@@ -226,6 +237,30 @@
             </div>
         </div>
 
+        <!-- Score radar -->
+        <div class="card col-6 rise">
+            <div class="card-title"><i class="ti ti-chart-radar"></i> Score profile</div>
+            <div class="radar-wrap"><canvas id="radarChart" role="img" aria-label="Radar chart of the five resume sub-scores"></canvas></div>
+        </div>
+
+        <!-- Career timeline -->
+        <div class="card col-6 rise">
+            <div class="card-title"><i class="ti ti-timeline"></i> Career timeline</div>
+            {% if report.timeline %}
+            <div class="timeline">
+                {% for e in report.timeline %}
+                <div class="tl-item">
+                    <div class="tl-dot"></div>
+                    <div class="tl-when">{{ e.start_year }} — {{ e.end }}</div>
+                    <div class="tl-label">{{ e.label }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="tl-empty">No dated roles detected. Add date ranges (e.g. “Jan 2020 – Present”) to your experience entries.</p>
+            {% endif %}
+        </div>
+
         <!-- JD matcher -->
         <div class="card col-12 rise">
             <div class="card-title"><i class="ti ti-target-arrow"></i> Job-description matcher</div>
@@ -282,7 +317,36 @@
             const pct = Math.max(2, Math.min(100, parseFloat(el.dataset.pct) || 0));
             requestAnimationFrame(() => requestAnimationFrame(() => { el.style.width = pct + '%'; }));
         });
+        buildRadar();
     });
+
+    // Sub-score radar (Chart.js) — re-rendered on theme change for correct contrast.
+    var radarChart = null;
+    function buildRadar() {
+        var el = document.getElementById('radarChart');
+        if (!el || !window.Chart) return;
+        var light = document.documentElement.getAttribute('data-theme') === 'light';
+        var grid = light ? 'rgba(15,23,42,0.12)' : 'rgba(255,255,255,0.12)';
+        var tick = light ? '#51607a' : '#93a0b8';
+        if (radarChart) radarChart.destroy();
+        radarChart = new Chart(el, {
+            type: 'radar',
+            data: {
+                labels: ['Impact', 'Completeness', 'Brevity', 'Clarity', 'Keywords'],
+                datasets: [{
+                    data: [{{ report.score.subscores.impact }}, {{ report.score.subscores.completeness }}, {{ report.score.subscores.brevity }}, {{ report.score.subscores.clarity }}, {{ report.score.subscores.keywords }}],
+                    fill: true, backgroundColor: 'rgba(99,102,241,0.22)', borderColor: '#22d3ee', borderWidth: 2,
+                    pointBackgroundColor: '#d946ef', pointBorderColor: '#fff', pointRadius: 4, pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { r: { min: 0, max: 100, ticks: { stepSize: 25, color: tick, backdropColor: 'transparent', font: { size: 10 } }, grid: { color: grid }, angleLines: { color: grid }, pointLabels: { color: tick, font: { size: 12 } } } },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+    window.__onThemeChange = buildRadar;
 
     // Build chips with textContent (never innerHTML) so JD keywords can't inject markup.
     function renderChips(container, items, cls, emptyMsg) {

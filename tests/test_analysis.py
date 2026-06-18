@@ -171,9 +171,46 @@ def test_extract_skills_respects_word_boundaries():
     assert "java" not in flat      # inside "javascript"
 
 
+# --- career timeline ---
+
+TIMELINE_SAMPLE = """
+Senior Engineer, Acme Corp    Jan 2020 - Present
+Software Engineer, Beta Inc    2017 - 2020
+Intern, Gamma Labs    06/2016 - 12/2016
+B.S. Computer Science, MIT    2013 - 2017
+Increased revenue by 40% during 2019
+"""
+
+
+def test_extract_timeline_finds_ranges():
+    tl = analysis.extract_timeline(TIMELINE_SAMPLE)
+    assert len(tl) >= 4
+    # most recent first
+    assert tl[0]["start_year"] == 2020
+    assert tl[0]["end"] in ("Present", "present") or tl[0]["end_year"] >= 2026
+
+
+def test_extract_timeline_labels_roles():
+    tl = analysis.extract_timeline(TIMELINE_SAMPLE)
+    labels = " ".join(e["label"] for e in tl).lower()
+    assert "acme" in labels
+    assert "beta" in labels
+
+
+def test_extract_timeline_ignores_single_year_lines():
+    # "Increased revenue by 40% during 2019" has a year but no range -> not an entry
+    tl = analysis.extract_timeline(TIMELINE_SAMPLE)
+    assert all("revenue" not in e["label"].lower() for e in tl)
+
+
+def test_extract_timeline_empty():
+    assert analysis.extract_timeline("") == []
+    assert analysis.extract_timeline("no dates here at all") == []
+
+
 # --- analyze (aggregate) ---
 
 def test_analyze_returns_all_sections():
     a = analysis.analyze(SAMPLE)
-    for key in ("stats", "sections", "skills", "score", "suggestions", "readability"):
+    for key in ("stats", "sections", "skills", "score", "suggestions", "readability", "timeline"):
         assert key in a
