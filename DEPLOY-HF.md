@@ -26,27 +26,35 @@ The app runs fully without this; only the AI chat panel needs it (and that featu
 separate known bug). To set it: open the Space → **Settings** → **Variables and secrets** →
 **New secret** → name `HUGGINGFACE_API_TOKEN`, value = your HF token.
 
-## Step 3 — Push the code to the Space
-Run these in a **fresh, throwaway clone** (Step 3a rewrites git history to move the model into
-LFS — don't do it in your main working copy):
+## Step 3 — Deploy (easiest: one script)
+From this repo folder, with the venv active:
+
+```bash
+huggingface-cli login        # paste a token with WRITE scope (https://huggingface.co/settings/tokens)
+python deploy_hf.py          # creates the Space and uploads everything
+```
+
+`deploy_hf.py` creates a public Docker Space named `Resume_Helper` under your account and
+uploads the project. The 27 MB model is uploaded via Git LFS **automatically** — no manual
+LFS steps, and the token stays in your local login cache (never in the repo or chat).
+You can skip Step 1; the script creates the Space for you.
+
+<details>
+<summary>Alternative: deploy with plain git + LFS (manual)</summary>
+
+Create the Space first (Step 1), then in a **fresh throwaway clone**:
 
 ```bash
 git clone https://github.com/Gakshith/Resume_Helper.git hf-deploy
 cd hf-deploy
-
-# 3a. Move the 27 MB model into Git LFS (required by Hugging Face)
 git lfs install
 git lfs track "*.pkl"
 git add .gitattributes
 git lfs migrate import --include="*.pkl" --include-ref=refs/heads/main
-
-# 3b. Point at your Space and push
 git remote add space https://huggingface.co/spaces/<YOUR_HF_USERNAME>/Resume_Helper
-git push space main
+git push space main          # password = a HF write token
 ```
-
-When prompted for a password, paste a **Hugging Face access token with write scope**
-(create one at https://huggingface.co/settings/tokens). Username = your HF username.
+</details>
 
 ## Step 4 — Watch it build
 On the Space page, open the **Logs** tab. The Docker image builds (a few minutes the first
