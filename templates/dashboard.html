@@ -2,9 +2,16 @@
 {% block title %}Analysis · ResumeAI{% endblock %}
 {% block head %}
 <style>
-    .dash { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1.1rem; align-items: start; }
-    .col-4 { grid-column: span 4; } .col-6 { grid-column: span 6; } .col-8 { grid-column: span 8; } .col-12 { grid-column: span 12; }
-    @media (max-width: 920px) { .dash > * { grid-column: 1 / -1 !important; } }
+    /* Hero summary row: score gauge + breakdown, equal height */
+    .dash-hero { display: grid; grid-template-columns: minmax(260px, 1fr) 1.9fr; gap: 1.1rem; align-items: stretch; margin-bottom: 1.1rem; }
+    /* Analytical cards pack as masonry columns so no empty gaps form between
+       cards of different heights. */
+    .dash-cards { column-count: 3; column-gap: 1.1rem; margin-bottom: 1.1rem; }
+    .dash-cards > * { break-inside: avoid; margin-bottom: 1.1rem; }
+    .card { display: flex; flex-direction: column; }
+    .score-card { justify-content: center; }
+    @media (max-width: 1080px) { .dash-cards { column-count: 2; } }
+    @media (max-width: 720px) { .dash-hero { grid-template-columns: 1fr; } .dash-cards { column-count: 1; } }
 
     .doc-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
     .doc-name { display: flex; align-items: center; gap: 0.6rem; font-weight: 500; }
@@ -127,8 +134,9 @@
     </div>
 
     <div class="dash">
+      <div class="dash-hero">
         <!-- Overall score gauge -->
-        <div class="card col-4 rise" style="text-align:center;">
+        <div class="card score-card rise" style="text-align:center;">
             <div class="card-title" style="justify-content:center;"><i class="ti ti-gauge"></i> Resume score</div>
             <div class="gauge-wrap">
                 <svg width="180" height="180" viewBox="0 0 180 180">
@@ -144,7 +152,7 @@
         </div>
 
         <!-- Score breakdown -->
-        <div class="card col-8 rise">
+        <div class="card rise">
             <div class="card-title"><i class="ti ti-chart-bar"></i> Score breakdown</div>
             {% set subs = [('Impact', report.score.subscores.impact, 'Action verbs &amp; quantified results'),
                            ('Completeness', report.score.subscores.completeness, 'Standard sections present'),
@@ -158,9 +166,11 @@
             </div>
             {% endfor %}
         </div>
+      </div><!-- /dash-hero -->
 
+      <div class="dash-cards">
         <!-- Best match prediction -->
-        <div class="card col-4 rise">
+        <div class="card rise">
             <div class="card-title"><i class="ti ti-briefcase"></i> Best role match</div>
             {% if confidence is not none %}
             <div class="ring-wrap">
@@ -184,21 +194,8 @@
             {% endif %}
         </div>
 
-        <!-- Sections -->
-        <div class="card col-4 rise">
-            <div class="card-title"><i class="ti ti-list-check"></i> Sections detected</div>
-            <div class="check-list">
-                {% for key, present in report.sections.items() %}
-                <div class="check-item {{ '' if present else 'miss' }}">
-                    <div class="ic {{ 'ok' if present else 'no' }}"><i class="ti {{ 'ti-check' if present else 'ti-x' }}"></i></div>
-                    <span style="text-transform:capitalize">{{ key }}</span>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-
         <!-- Stats -->
-        <div class="card col-4 rise">
+        <div class="card rise">
             <div class="card-title"><i class="ti ti-clipboard-data"></i> Resume stats</div>
             <div class="stat-grid">
                 <div class="stat"><div class="n">{{ report.stats.word_count }}</div><div class="l">Words</div></div>
@@ -210,41 +207,27 @@
             </div>
         </div>
 
-        <!-- Skills -->
-        <div class="card col-6 rise">
-            <div class="card-title"><i class="ti ti-tags"></i> Skills detected</div>
-            {% if report.skills %}
-            {% for group, items in report.skills.items() %}
-            <div class="skill-group">
-                <div class="g">{{ group }}</div>
-                <div class="skill-chips">
-                    {% for s in items %}<span class="chip accent">{{ s }}</span>{% endfor %}
-                </div>
-            </div>
-            {% endfor %}
-            {% else %}
-            <p style="color:var(--faint);font-size:0.9rem;">No recognized skills found — add a Skills section listing your tools and technologies.</p>
-            {% endif %}
-        </div>
-
-        <!-- Suggestions -->
-        <div class="card col-6 rise">
-            <div class="card-title"><i class="ti ti-bulb"></i> Smart suggestions</div>
-            <div class="tips">
-                {% for tip in report.suggestions %}
-                <div class="tip"><i class="ti ti-arrow-badge-right ic"></i><span>{{ tip }}</span></div>
-                {% endfor %}
-            </div>
-        </div>
-
         <!-- Score radar -->
-        <div class="card col-6 rise">
+        <div class="card rise">
             <div class="card-title"><i class="ti ti-chart-radar"></i> Score profile</div>
             <div class="radar-wrap"><canvas id="radarChart" role="img" aria-label="Radar chart of the five resume sub-scores"></canvas></div>
         </div>
 
+        <!-- Sections -->
+        <div class="card rise">
+            <div class="card-title"><i class="ti ti-list-check"></i> Sections detected</div>
+            <div class="check-list">
+                {% for key, present in report.sections.items() %}
+                <div class="check-item {{ '' if present else 'miss' }}">
+                    <div class="ic {{ 'ok' if present else 'no' }}"><i class="ti {{ 'ti-check' if present else 'ti-x' }}"></i></div>
+                    <span style="text-transform:capitalize">{{ key }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
         <!-- Career timeline -->
-        <div class="card col-6 rise">
+        <div class="card rise">
             <div class="card-title"><i class="ti ti-timeline"></i> Career timeline</div>
             {% if report.timeline %}
             <div class="timeline">
@@ -261,8 +244,37 @@
             {% endif %}
         </div>
 
+        <!-- Suggestions -->
+        <div class="card rise">
+            <div class="card-title"><i class="ti ti-bulb"></i> Smart suggestions</div>
+            <div class="tips">
+                {% for tip in report.suggestions %}
+                <div class="tip"><i class="ti ti-arrow-badge-right ic"></i><span>{{ tip }}</span></div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Skills -->
+        <div class="card rise">
+            <div class="card-title"><i class="ti ti-tags"></i> Skills detected</div>
+            {% if report.skills %}
+            {% for group, items in report.skills.items() %}
+            <div class="skill-group">
+                <div class="g">{{ group }}</div>
+                <div class="skill-chips">
+                    {% for s in items %}<span class="chip accent">{{ s }}</span>{% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p style="color:var(--faint);font-size:0.9rem;">No recognized skills found — add a Skills section listing your tools and technologies.</p>
+            {% endif %}
+        </div>
+
+      </div><!-- /dash-cards -->
+
         <!-- JD matcher -->
-        <div class="card col-12 rise">
+        <div class="card jd-card rise">
             <div class="card-title"><i class="ti ti-target-arrow"></i> Job-description matcher</div>
             <div class="jd-grid">
                 <div>
