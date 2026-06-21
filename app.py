@@ -18,14 +18,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-import ssl
-try:
-    _create_unverified_https_context = ssl._create_unverified_context
-except AttributeError:
-    pass
-else:
-    ssl._create_default_https_context = _create_unverified_https_context
-
 def ensure_nltk_resource(resource_path: str, package_name: str, fallback_paths: Optional[List[Path]] = None):
     if fallback_paths and any(path.exists() for path in fallback_paths):
         return
@@ -51,6 +43,7 @@ ensure_nltk_resource(
 
 from Models import Register
 import analysis
+import security
 import re
 import nltk
 from nltk.corpus import stopwords
@@ -283,7 +276,25 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return RedirectResponse(url="/login", status_code=302)
         return await call_next(request)
 
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Apply defense-in-depth response headers (CSP, anti-clickjacking, nosniff)."""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        for header, value in security.SECURITY_HEADERS.items():
+            response.headers.setdefault(header, value)
+        return response
+
+
 app.add_middleware(AuthMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+def _request_ip(request: Request) -> str:
+    return security.client_ip(
+        request.headers.get("x-forwarded-for"),
+        request.client.host if request.client else None,
+    )
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
@@ -300,11 +311,13 @@ async def register_page(request: Request):
 
 @app.post("/register", response_class=HTMLResponse)
 async def register(request: Request, UserName: str = Form(...), Password: str = Form(...)):
+    if security.is_rate_limited(f"register:{_request_ip(request)}"):
+        return templates.TemplateResponse("register.html", {"request": request, "error": "Too many attempts. Please wait a few minutes and try again."}, status_code=429)
     try:
         reg_data = Register(UserName=UserName, Password=Password)
     except Exception as e:
         print(f"Register validation error: {e}")
-        return templates.TemplateResponse("register.html", {"request": request, "error": "Invalid username or password."}, status_code=400)
+        return templates.TemplateResponse("register.html", {"request": request, "error": "Username must be 3+ characters and password 8+ characters."}, status_code=400)
 
     if any(u.get("UserName") == reg_data.UserName for u in users_db):
          return templates.TemplateResponse("register.html", {"request": request, "error": "Username already taken."}, status_code=409)
@@ -321,6 +334,9 @@ async def login_page(request: Request):
 
 @app.post("/login", response_class=HTMLResponse)
 async def login(request: Request, UserName: str = Form(...), Password: str = Form(...)):
+    if security.is_rate_limited(f"login:{_request_ip(request)}"):
+        return templates.TemplateResponse("login.html", {"request": request, "error": "Too many login attempts. Please wait a few minutes and try again."}, status_code=429)
+
     user = next((u for u in users_db if u.get("UserName") == UserName), None)
 
     if user is None or not verify_password(Password, user):
@@ -606,7 +622,7 @@ async def chat_endpoint(request: Request, chat_req: ChatRequest):
             "Your objective is to help the user refine their resume for elite tech roles. "
             "Focus on: UI ownership, technical terminology, and user-centric impact.\n\n"
             "--- RESUME CONTEXT ---\n"
-            f"{resume_text}\n"
+            f"{resume_text[:6000]}\n"
             "--- END RESUME CONTEXT ---\n\n"
             "UI/UX Content Rules:\n"
             "1. Lead with UI Ownership: Always start project bullets with design ownership (e.g., 'Designed a clean, intuitive interface...').\n"
