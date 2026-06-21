@@ -59,3 +59,6 @@ nltk_data/
 
 # Ruflo / claude-flow runtime data
 .claude-flow/
+
+# Ruflo vector store (runtime)
+ruvector.db
