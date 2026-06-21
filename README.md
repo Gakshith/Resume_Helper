@@ -1,3 +1,13 @@
+---
+title: Resume Helper
+emoji: 📄
+colorFrom: pink
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Resume Generator & Analyzer
 
 An AI-powered resume analysis and career consultation application built with FastAPI. This application uses machine learning to classify resumes into job categories and provides personalized career advice through an AI chat interface.
