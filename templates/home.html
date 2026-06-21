@@ -81,7 +81,7 @@
             if (!files || !files.length) return;
             const f = files[0];
             if (!f.name.toLowerCase().endsWith('.pdf')) {
-                filename.innerHTML = '<span style="color:#fda4af">Please choose a PDF file.</span>';
+                filename.innerHTML = '<span style="color:#b3261e">Please choose a PDF file.</span>';
                 return;
             }
             filename.innerHTML = 'Selected: <strong>' + f.name + '</strong>';

@@ -5,13 +5,13 @@
     .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; align-items: start; }
     @media (max-width: 820px) { .cmp-grid { grid-template-columns: 1fr; } }
     .cmp-jd { width: 100%; min-height: 320px; resize: vertical; line-height: 1.5; font-size: 0.9rem; }
-    .rank { border: 1px solid var(--border); border-radius: 13px; padding: 1rem; margin-bottom: 0.8rem; background: var(--tile); animation: pop 0.4s ease both; }
-    .rank.best { border-color: rgba(99,102,241,0.5); box-shadow: 0 0 0 1px rgba(99,102,241,0.35); }
+    .rank { border: 1px solid var(--hairline); border-radius: 13px; padding: 1rem; margin-bottom: 0.8rem; background: var(--color-bone); animation: pop 0.4s ease both; }
+    .rank.best { border-color: var(--color-iris); }
     .rank-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
-    .rank-title { font-weight: 700; font-size: 0.95rem; }
-    .rank-pct { font-size: 1.2rem; font-weight: 800; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-    .rank-badge { font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--cyan); background: rgba(34,211,238,0.12); padding: 0.2rem 0.5rem; border-radius: 999px; }
-    .cmp-empty { color: var(--faint); display: grid; place-items: center; min-height: 200px; text-align: center; }
+    .rank-title { font-weight: 500; letter-spacing: -0.025em; font-size: 0.95rem; }
+    .rank-pct { font-size: 1.2rem; font-weight: 500; letter-spacing: -0.03em; color: var(--color-ink); }
+    .rank-badge { font-family: var(--font-mono); font-feature-settings: "calt" 0, "liga" 0; font-size: 0.58rem; font-weight: 400; text-transform: uppercase; letter-spacing: 0.025em; color: var(--chip-accent-text); background: rgba(192,148,228,0.16); padding: 0.2rem 0.55rem; border-radius: 999px; }
+    .cmp-empty { color: var(--color-smoke); display: grid; place-items: center; min-height: 200px; text-align: center; }
 </style>
 {% endblock %}
 {% block body %}

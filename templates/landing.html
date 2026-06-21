@@ -3,15 +3,14 @@
 {% block head %}
 <style>
     .lp-nav { display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 0; animation: fadeDown 0.5s ease both; }
-    .lp-hero { text-align: center; padding: 4rem 0 1rem; animation: fadeUp 0.7s ease both; }
-    .lp-hero .eyebrow { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; font-weight: 600; color: var(--cyan); background: rgba(34,211,238,0.1); border: 1px solid rgba(34,211,238,0.25); padding: 0.4rem 0.95rem; border-radius: 999px; margin-bottom: 1.4rem; }
-    .lp-hero h1 { font-size: clamp(2.4rem, 6vw, 4.3rem); font-weight: 850; letter-spacing: -0.035em; line-height: 1.04; }
-    .lp-hero h1 .grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-    .lp-hero p { color: var(--muted); font-size: 1.18rem; margin: 1.1rem auto 0; max-width: 40rem; line-height: 1.6; }
-    .lp-cta { display: flex; gap: 0.9rem; justify-content: center; margin-top: 2.1rem; flex-wrap: wrap; }
-    .lp-cta .btn { padding: 0.95rem 1.8rem; font-size: 1rem; }
-    .lp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1.1rem; margin: 4rem 0 2rem; animation: fadeUp 0.7s ease 0.15s both; }
-    .lp-foot { text-align: center; color: var(--faint); font-size: 0.85rem; padding: 2.5rem 0 1rem; }
+    .lp-hero { text-align: center; padding: 4.5rem 0 1rem; animation: fadeUp 0.7s ease both; }
+    .lp-hero .eyebrow { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.7rem; color: var(--color-smoke); margin-bottom: 1.5rem; }
+    .lp-hero h1 { font-size: clamp(2.4rem, 6vw, 4rem); font-weight: 500; letter-spacing: -0.04em; line-height: 1.05; }
+    .lp-hero p { color: var(--color-smoke); font-size: 1.15rem; margin: 1.2rem auto 0; max-width: 40rem; line-height: 1.5; }
+    .lp-cta { display: flex; gap: 0.8rem; justify-content: center; margin-top: 2.2rem; flex-wrap: wrap; }
+    .lp-cta .btn { padding: 0.95rem 1.8rem; font-size: 0.95rem; }
+    .lp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 2rem; margin: 4.5rem 0 2rem; animation: fadeUp 0.7s ease 0.15s both; }
+    .lp-foot { text-align: center; color: var(--color-smoke); font-family: var(--font-mono); font-feature-settings: "calt" 0, "liga" 0; text-transform: uppercase; letter-spacing: 0.025em; font-size: 0.66rem; padding: 3rem 0 1rem; }
 </style>
 {% endblock %}
 {% block body %}

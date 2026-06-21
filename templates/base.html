@@ -7,33 +7,14 @@
     <title>{% block title %}ResumeAI{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css" rel="stylesheet">
-    <link href="/static/css/app.css" rel="stylesheet">
-    <script>
-        (function () { try { var t = localStorage.getItem('ra-theme'); if (t === 'light') document.documentElement.setAttribute('data-theme', 'light'); } catch (e) {} })();
-    </script>
+    <link href="/static/css/app.css?v=hume-1" rel="stylesheet">
     {% block head %}{% endblock %}
 </head>
 
 <body>
     {% block body %}{% endblock %}
-
-    <button id="themeToggle" class="theme-toggle" aria-label="Toggle light or dark theme" title="Toggle theme"><i class="ti ti-sun"></i></button>
-    <script>
-        (function () {
-            var btn = document.getElementById('themeToggle');
-            function paint() { var light = document.documentElement.getAttribute('data-theme') === 'light'; btn.innerHTML = '<i class="ti ' + (light ? 'ti-moon' : 'ti-sun') + '"></i>'; }
-            paint();
-            btn.addEventListener('click', function () {
-                var light = document.documentElement.getAttribute('data-theme') === 'light';
-                if (light) { document.documentElement.removeAttribute('data-theme'); try { localStorage.setItem('ra-theme', 'dark'); } catch (e) {} }
-                else { document.documentElement.setAttribute('data-theme', 'light'); try { localStorage.setItem('ra-theme', 'light'); } catch (e) {} }
-                paint();
-                if (window.__onThemeChange) window.__onThemeChange();
-            });
-        })();
-    </script>
     {% block scripts %}{% endblock %}
 </body>
 
