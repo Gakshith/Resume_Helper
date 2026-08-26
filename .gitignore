@@ -63,5 +63,3 @@ nltk_data/
 # Ruflo vector store (runtime)
 ruvector.db
 
-# docs live in ../../Documentation/ — reached through the docs symlink
-docs
